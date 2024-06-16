@@ -31,8 +31,8 @@ COOLDOWN_TIME = 0  # Cooldown time between attacks in seconds
 # Function to read keys from the file
 def read_keys():
     allowed_keys = {}
-    if os.path.exists(KEYS_FILE):
-        with open(KEYS_FILE, "r") as file:
+    if os.path.exists(KEY_FILE):
+        with open(KEY_FILE, "r") as file:
             for line in file:
                 line = line.strip()
                 if line:
