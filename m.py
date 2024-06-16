@@ -28,14 +28,20 @@ MAX_ATTACKS_PER_DAY = 5
 COOLDOWN_TIME = 0  # Cooldown time between attacks in seconds
 
 # Function to read keys and their expiration dates from the file
+# Function to read keys from the file
 def read_keys():
-    keys = {}
-    if os.path.exists(KEY_FILE):
-        with open(KEY_FILE, "r") as file:
+    allowed_keys = {}
+    if os.path.exists(KEYS_FILE):
+        with open(KEYS_FILE, "r") as file:
             for line in file:
-                key, expiry_date = line.strip().split()
-                keys[key] = expiry_date
-    return keys
+                line = line.strip()
+                if line:
+                    try:
+                        key, expiry_date = line.split(maxsplit=1)
+                        allowed_keys[key] = datetime.datetime.strptime(expiry_date, "%Y-%m-%d").date()
+                    except ValueError:
+                        print(f"Ignoring invalid line in keys.txt: {line}")
+    return allowed_keys
 
 # List to store allowed keys
 allowed_keys = read_keys()
