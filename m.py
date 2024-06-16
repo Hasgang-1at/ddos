@@ -25,7 +25,7 @@ bot = TeleBot('7057221824:AAEHiqVq3qC3U3yWByLufnvT-xMzgCdJyiE')
 # Constants for attack limits
 MAX_ATTACKS_PER_DAY = 5
 
-COOLDOWN_TIME = 50  # Cooldown time between attacks in seconds
+COOLDOWN_TIME = 2  # Cooldown time between attacks in seconds
 # Function to read keys and their expiration dates from the file
 def read_keys():
     allowed_keys = {}
