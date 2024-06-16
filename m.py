@@ -23,7 +23,7 @@ TIMEOUT = 130
 # Bot initialization (replace 'YOUR_BOT_TOKEN' with your actual bot token)
 bot = TeleBot('7057221824:AAEHiqVq3qC3U3yWByLufnvT-xMzgCdJyiE')
 
-# Constants for attack limits
+## Constants for attack limits
 MAX_ATTACKS_PER_DAY = 5
 COOLDOWN_TIME = 0  # Cooldown time between attacks in seconds
 
@@ -231,12 +231,10 @@ bgmi_cooldown = {}
 @bot.message_handler(commands=['bgmi'])
 def handle_bgmi(message):
     user_id = str(message.chat.id)
-    if user_id not in VERIFIED_GROUP_IDS and not has_valid_key(user_id):
-        bot.reply_to(message, "This bot can only be used in a verified group or with a valid key.")
-        return
+    is_admin = is_user_admin(message.chat.id, message.from_user.id)
 
-    if is_key_expired(user_id):
-        bot.reply_to(message, "Your key has expired. Please enter a valid key to continue.")
+    if user_id not in VERIFIED_GROUP_IDS and not (is_admin or has_valid_key(user_id)):
+        bot.reply_to(message, "You need a valid key to use this command. Please activate by entering a valid key.")
         return
 
     if user_id in bgmi_cooldown and (datetime.datetime.now() - bgmi_cooldown[user_id]).seconds < COOLDOWN_TIME:
@@ -273,7 +271,7 @@ def handle_bgmi(message):
 @bot.message_handler(commands=['mylogs'])
 def show_command_logs(message):
     user_id = str(message.chat.id)
-    if user_id in allowed_keys:
+    if has_valid_key(user_id) or is_user_admin(message.chat.id, message.from_user.id):
         try:
             with open(LOG_FILE, "r") as file:
                 command_logs = file.readlines()
@@ -322,5 +320,23 @@ def broadcast_message(message):
         bot.reply_to(message, response)
     else:
         bot.reply_to(message, "You are not authorized to use this command.")
+
+@bot.message_handler(commands=['activate'])
+def activate_key(message):
+    user_id = str(message.chat.id)
+    command = message.text.split()
+    if len(command) > 1:
+        key_to_activate = command[1]
+        if key_to_activate in allowed_keys and not is_key_expired(key_to_activate):
+            allowed_keys[user_id] = allowed_keys[key_to_activate]
+            with open(KEY_FILE, "w") as file:
+                for key, expiry_date in allowed_keys.items():
+                    file.write(f"{key} {expiry_date}\n")
+            response = "Your key has been activated successfully."
+        else:
+            response = "Invalid or expired key."
+    else:
+        response = "Usage: /activate <key>"
+    bot.reply_to(message, response)
 
 bot.polling(none_stop=True, timeout=TIMEOUT)
