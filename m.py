@@ -21,7 +21,7 @@ LOG_FILE = "log.txt"
 TIMEOUT = 130
 
 # Bot initialization (replace 'YOUR_BOT_TOKEN' with your actual bot token)
-bot = TeleBot('7057221824:AAEHiqVq3qC3U3yWByLufnvT-xMzgCdJyiE')
+bot = TeleBot('7274578779:AAFPadSmqpo-7p97m6eFLYN21q361QJt1as')
 # Constants for attack limits
 MAX_ATTACKS_PER_DAY = 5
 
