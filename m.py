@@ -6,7 +6,7 @@ from telebot import TeleBot
 from requests.exceptions import ReadTimeout
 
 # Admin user IDs
-ADMIN_IDS = ["6800732852"]
+ADMIN_IDS = ["5113311276"]
 
 # Verified group IDs
 VERIFIED_GROUP_IDS = ["2208074827"]  # Replace with your group ID
